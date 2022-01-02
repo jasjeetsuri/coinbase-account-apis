@@ -1,0 +1,91 @@
+#r "Newtonsoft.Json"
+
+using System;
+using System.Net;
+using Newtonsoft.Json;
+using System.Text;
+using System.Net.Http.Headers;
+using Coinbase.Pro;
+using Coinbase.Pro.Models;
+
+public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceWriter log)
+{
+    log.Info("C# HTTP trigger function processed a request.");
+    // parse query parameter.
+
+    var qs = req.RequestUri.ParseQueryString();
+
+    string cb_apiKey = qs.Get("apikey");
+    string passphrase = qs.Get("passphrase");
+    string secret = qs.Get("secret");
+    string currency = qs.Get("currency");
+
+
+    var client = new CoinbaseProClient(new Config
+    {
+        ApiKey = cb_apiKey,
+        Secret = secret,
+        Passphrase = passphrase, //
+        //Override the ApiUrl property to use Sandbox.
+        //ApiUrl = "https://api-public.sandbox.pro.coinbase.com"
+    });
+
+            var orders = await client.Orders.GetAllOrdersAsync("all", "BTC-" + currency);
+            var currentBtcPrice = await client.MarketData.GetStatsAsync("BTC-" + currency);
+            Decimal totalBtc = 0.0M;
+            Decimal totalCost = 0.0M;
+            List<Transaction> Transactions = new List<Transaction>();
+            foreach (Order order in orders.Data)
+            {
+
+                if (order.DoneReason == "filled")
+                {
+                    
+                    Transaction newTx = new Transaction();
+                    var time = DateTime.Parse(order.DoneAt.ToString());
+                    var profitOfTx = (((currentBtcPrice.Last * order.FilledSize) - (order.ExecutedValue+ order.FillFees)) / (currentBtcPrice.Last * order.FilledSize)) * 100;
+                    if (profitOfTx > 0){
+                        newTx.gain = "true";
+                        newTx.profit = "+" + Math.Round(profitOfTx, 2).ToString() + "%";
+                    }else{
+                        newTx.gain = "false";
+                        newTx.profit = Math.Round(profitOfTx, 2).ToString() + "%";
+                    }
+                    newTx.time = time.ToString("dd MMM yy");
+                    newTx.addr = "0";
+                    newTx.value = Math.Round(order.FilledSize * currentBtcPrice.Last, 2).ToString() + " " + currency;
+                    newTx.cost = (order.ExecutedValue+ order.FillFees).ToString("0.00") + " " + currency;
+                    
+                    newTx.btc =  order.FilledSize.ToString();
+                    newTx.incoming = "true";
+                    totalCost += order.ExecutedValue + order.FillFees;
+                    totalBtc += order.FilledSize;   
+
+                    Transactions.Add(newTx);
+                }
+            }
+
+    //log.LogInformation("C# HTTP trigger function processed a request.");
+        string newJson = JsonConvert.SerializeObject(Transactions);
+        //newJson = "{\"Transactions\":" + newJson +"}";
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(newJson, Encoding.UTF8, "application/json")
+        };
+}
+
+public class Transaction
+{
+    public string time { get; set; }
+    public string addr { get; set; }
+    public string value { get; set; }
+    public string cost { get; set; }
+    public string profit { get; set; }
+    public string btc { get; set; }
+    public string incoming { get; set; }
+    public string gain { get; set; }
+}
+
+
+
+
