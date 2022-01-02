@@ -26,7 +26,6 @@ public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceW
     string listAddress = "";
     double total = 0;
     double cost = 0;
-    string apikey = "JCsxHXh5JdRb9IX9DVUcZ6fO9EGVnHlbjXaR2yGnXwQ";
 
 
     var client = new CoinbaseProClient(new Config
@@ -37,13 +36,6 @@ public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceW
         //Override the ApiUrl property to use Sandbox.
         //ApiUrl = "https://api-public.sandbox.pro.coinbase.com"
     });
-
-    HttpClient clientBlockonomics = new HttpClient();
-    clientBlockonomics.BaseAddress = new Uri("https://www.blockonomics.co/api/");
-    clientBlockonomics.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apikey);
-    HttpClient clientBlockchain = new HttpClient();
-    clientBlockchain.BaseAddress = new Uri("https://blockchain.info/");
-    HttpContent httpContent = new StringContent(sb.ToString(), Encoding.UTF8, "application/json");
 
     // get all orders, and find total cost, and total btc accumlated
     var allOrders  = await client.Orders.GetAllOrdersAsync("all", "BTC-GBP");
@@ -173,64 +165,3 @@ public class Exchange
 {
     public Data data { get; set; }
 }
-
-    public partial class GettingStarted
-    {
-        [JsonProperty("history")]
-        public History[] History { get; set; }
-
-        [JsonProperty("pending")]
-        public object[] Pending { get; set; }
-    }
-
-    public partial class History
-    {
-        [JsonProperty("addr")]
-        public string[] Addr { get; set; }
-
-        [JsonProperty("time")]
-        public long Time { get; set; }
-
-        [JsonProperty("txid")]
-        public string Txid { get; set; }
-
-        [JsonProperty("value")]
-        public long Value { get; set; }
-    }
-
-    public partial class GettingStarted
-    {
-        public static GettingStarted FromJson(string json) => JsonConvert.DeserializeObject<GettingStarted>(json, Converter.Settings);
-    }
-
-    public class Converter
-    {
-        public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
-        {
-            MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
-            DateParseHandling = DateParseHandling.None,
-        };
-    }
-
-    public partial class YpubResponse
-    {
-        [JsonProperty("response")]
-        public Responsex[] Response { get; set; }
-    }
-
-    public partial class Responsex
-    {
-        [JsonProperty("confirmed")]
-        public long Confirmed { get; set; }
-
-        [JsonProperty("addr")]
-        public string Addr { get; set; }
-
-        [JsonProperty("unconfirmed")]
-        public long Unconfirmed { get; set; }
-    }
-
-    public partial class YpubResponse
-    {
-        public static YpubResponse FromJson(string json) => JsonConvert.DeserializeObject<YpubResponse>(json, Converter.Settings);
-    }
