@@ -1,0 +1,19 @@
+using System;
+using Coinbase.Pro;
+using Coinbase.Pro.Models;
+
+public static async void Run(TimerInfo myTimer, ILogger log)
+{
+    var client = new CoinbaseProClient(new Config
+            {
+                ApiKey = "", //
+                Secret = "",
+                Passphrase = "",
+            });
+    var currentBtcPrice = await client.MarketData.GetStatsAsync("BTC-GBP");
+    var limitPrice = currentBtcPrice.Last * 0.99M;
+    var BtcToBuy = (1 / currentBtcPrice.Last) * 50;
+    var order = await client.Orders.PlaceLimitOrderAsync(OrderSide.Buy, "BTC-GBP", size: Math.Round(BtcToBuy, 7), limitPrice: Math.Round(limitPrice, 2));
+
+    log.LogInformation($"Time: {DateTime.Now} Order Id: {order.Id}, Order price: {order.Price}, Order amount: {order.Size} BTC, Market: {order.ProductId}, {order.Status}");
+}
