@@ -1,0 +1,236 @@
+#r "Newtonsoft.Json"
+
+using System;
+using System.Net;
+using Newtonsoft.Json;
+using System.Text;
+using System.Net.Http.Headers;
+using Coinbase.Pro;
+using Coinbase.Pro.Models;
+
+public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceWriter log)
+{
+    log.Info("C# HTTP trigger function processed a request.");
+    // parse query parameter.
+
+    var qs = req.RequestUri.ParseQueryString();
+
+    string cb_apiKey = qs.Get("apikey");
+    string passphrase = qs.Get("passphrase");
+    string secret = qs.Get("secret");
+    string currency = qs.Get("currency");
+    
+    StringBuilder sb = new StringBuilder();
+    StringWriter sw = new StringWriter(sb);
+    JsonTextWriter writer = new JsonTextWriter(sw);
+    string listAddress = "";
+    double total = 0;
+    double cost = 0;
+    string apikey = "JCsxHXh5JdRb9IX9DVUcZ6fO9EGVnHlbjXaR2yGnXwQ";
+
+
+    var client = new CoinbaseProClient(new Config
+    {
+        ApiKey = cb_apiKey,
+        Secret = secret,
+        Passphrase = passphrase, //
+        //Override the ApiUrl property to use Sandbox.
+        //ApiUrl = "https://api-public.sandbox.pro.coinbase.com"
+    });
+
+    HttpClient clientBlockonomics = new HttpClient();
+    clientBlockonomics.BaseAddress = new Uri("https://www.blockonomics.co/api/");
+    clientBlockonomics.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apikey);
+    HttpClient clientBlockchain = new HttpClient();
+    clientBlockchain.BaseAddress = new Uri("https://blockchain.info/");
+    HttpContent httpContent = new StringContent(sb.ToString(), Encoding.UTF8, "application/json");
+
+    // get all orders, and find total cost, and total btc accumlated
+    var allOrders  = await client.Orders.GetAllOrdersAsync("all", "BTC-GBP");
+    var currentBtcPrice = await client.MarketData.GetStatsAsync("BTC-GBP");
+    Decimal totalBtc = 0.0M;
+    Decimal totalCost = 0.0M;
+
+    foreach (Order order in allOrders.Data)
+    {
+
+        if (order.DoneReason == "filled")
+        {
+            /*Console.WriteLine("Date: {0}", y.DoneAt);
+            Console.WriteLine("Settled: {0}", y.Settled);
+            Console.WriteLine("Cost: {0} GBP", y.ExecutedValue.ToString("0.00"));
+            Console.WriteLine("Price: {0} GBP", y.Price.ToString("0.00"));
+            Console.WriteLine("Amount: {0} BTC", y.FilledSize);
+            Console.WriteLine("Fee: {0} USD \n", y.FillFees.ToString("0.00"));*/
+            totalCost += order.ExecutedValue + order.FillFees;
+            totalBtc += order.FilledSize;
+
+        }
+    }
+    var currentValue = (currentBtcPrice.Last * totalBtc);
+    var profit =  currentValue - totalCost;
+
+    //Get coinbase price GBP
+    HttpClient clientPriceGbp = new HttpClient();
+    clientPriceGbp.BaseAddress = new Uri("https://api.coinbase.com/v2/prices/BTC-GBP/");
+    clientPriceGbp.DefaultRequestHeaders.Add("CB-VERSION", "2017-08-05");
+    HttpResponseMessage responseGbp = await clientPriceGbp.GetAsync("spot");
+    var priceGbp = responseGbp.Content.ReadAsStringAsync().Result;
+    Exchange gbpJson = JsonConvert.DeserializeObject<Exchange>(priceGbp);
+
+    HttpClient clientPriceUsd = new HttpClient();
+    clientPriceUsd.BaseAddress = new Uri("https://api.coinbase.com/v2/prices/BTC-USD/");
+    clientPriceUsd.DefaultRequestHeaders.Add("CB-VERSION", "2017-08-05");
+    HttpResponseMessage responseUsd = await clientPriceUsd.GetAsync("spot");
+    var priceUsd = responseUsd.Content.ReadAsStringAsync().Result;
+    Exchange usdJson = JsonConvert.DeserializeObject<Exchange>(priceUsd);
+
+    HttpClient clientPriceEur = new HttpClient();
+    clientPriceEur.BaseAddress = new Uri("https://api.coinbase.com/v2/prices/BTC-EUR/");
+    clientPriceEur.DefaultRequestHeaders.Add("CB-VERSION", "2017-08-05");
+    HttpResponseMessage responseEur = await clientPriceEur.GetAsync("spot");
+    var priceEur = responseEur.Content.ReadAsStringAsync().Result;
+    Exchange eurJson = JsonConvert.DeserializeObject<Exchange>(priceEur);
+
+    HttpClient clientPriceLocal = new HttpClient();
+    clientPriceLocal.BaseAddress = new Uri("https://api.coinbase.com/v2/prices/BTC-" +currency + "/");
+    clientPriceLocal.DefaultRequestHeaders.Add("CB-VERSION", "2017-08-05");
+    HttpResponseMessage responseLocal = await clientPriceLocal.GetAsync("spot");
+    var priceLocal = responseLocal.Content.ReadAsStringAsync().Result;
+    Exchange priceLocalJson = JsonConvert.DeserializeObject<Exchange>(priceLocal);
+
+    Decimal btcBalance = 0.00M;
+    switch (currency)
+    {
+        case "GBP":
+            var btcBalanceToGBP = totalBtc * gbpJson.data.amount;
+            btcBalance = btcBalanceToGBP;
+            break;
+        case "USD":
+            var btcBalanceToUSD = totalBtc * usdJson.data.amount;
+            btcBalance = btcBalanceToUSD;
+            break;
+        case "EUR":
+            var btcBalanceToEUR = totalBtc * eurJson.data.amount;
+            btcBalance = btcBalanceToEUR;
+            break;
+        default:
+            HttpClient clientPriceOTHER = new HttpClient();
+            clientPriceOTHER.BaseAddress = new Uri("https://api.coinbase.com/v2/prices/BTC-" + currency +"/");
+            clientPriceOTHER.DefaultRequestHeaders.Add("CB-VERSION", "2017-08-05");
+            HttpResponseMessage responsePrice = await clientPriceOTHER.GetAsync("spot");
+            var price = responsePrice.Content.ReadAsStringAsync().Result;
+            Exchange priceJson = JsonConvert.DeserializeObject<Exchange>(price);
+            btcBalance = totalBtc * priceJson.data.amount;
+            break;
+    }
+
+    //Double profit = btcBalance - totalCost;
+    string isUp = "True";
+    if (profit < 0) {
+        isUp = "False";
+    }
+    //Build json object to return to user
+    var myObj = new {
+        BTC_to_GBP = String.Format("{0:N}", priceLocalJson.data.amount),
+        BTC_to_USD = String.Format("{0:N}", usdJson.data.amount),
+        BTC_to_EUR = String.Format("{0:N}", eurJson.data.amount),
+        Total_BTC =  totalBtc.ToString() +" BTC",
+        Total_Fiat = String.Format("{0:N}", btcBalance),
+        Total_Cost = String.Format("{0:N}",totalCost),
+        Profit = String.Format("{0:N}",profit),
+        isUp = isUp
+        };
+    
+    var jsonToReturn = JsonConvert.SerializeObject(myObj);
+    
+    return new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StringContent(jsonToReturn, Encoding.UTF8, "application/json")
+    };
+}
+
+public class Response
+{
+    public int confirmed { get; set; }
+    public string addr { get; set; }
+    public int unconfirmed { get; set; }
+}
+
+public class RootObject
+{
+    public List<Response> response { get; set; }
+}
+
+public class Data
+{
+    public string @base { get; set; }
+    public string currency { get; set; }
+    public decimal amount { get; set; }
+}
+
+public class Exchange
+{
+    public Data data { get; set; }
+}
+
+    public partial class GettingStarted
+    {
+        [JsonProperty("history")]
+        public History[] History { get; set; }
+
+        [JsonProperty("pending")]
+        public object[] Pending { get; set; }
+    }
+
+    public partial class History
+    {
+        [JsonProperty("addr")]
+        public string[] Addr { get; set; }
+
+        [JsonProperty("time")]
+        public long Time { get; set; }
+
+        [JsonProperty("txid")]
+        public string Txid { get; set; }
+
+        [JsonProperty("value")]
+        public long Value { get; set; }
+    }
+
+    public partial class GettingStarted
+    {
+        public static GettingStarted FromJson(string json) => JsonConvert.DeserializeObject<GettingStarted>(json, Converter.Settings);
+    }
+
+    public class Converter
+    {
+        public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
+        {
+            MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
+            DateParseHandling = DateParseHandling.None,
+        };
+    }
+
+    public partial class YpubResponse
+    {
+        [JsonProperty("response")]
+        public Responsex[] Response { get; set; }
+    }
+
+    public partial class Responsex
+    {
+        [JsonProperty("confirmed")]
+        public long Confirmed { get; set; }
+
+        [JsonProperty("addr")]
+        public string Addr { get; set; }
+
+        [JsonProperty("unconfirmed")]
+        public long Unconfirmed { get; set; }
+    }
+
+    public partial class YpubResponse
+    {
+        public static YpubResponse FromJson(string json) => JsonConvert.DeserializeObject<YpubResponse>(json, Converter.Settings);
+    }
