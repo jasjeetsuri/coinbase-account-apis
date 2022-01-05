@@ -43,7 +43,7 @@ public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceW
                     
                     Transaction newTx = new Transaction();
                     var time = DateTime.Parse(order.DoneAt.ToString());
-                    var profitOfTx = (((currentBtcPrice.Last * order.FilledSize) - (order.ExecutedValue+ order.FillFees)) / (currentBtcPrice.Last * order.FilledSize)) * 100;
+                    var profitOfTx = (((currentBtcPrice.Last * order.FilledSize) - (order.ExecutedValue+ order.FillFees)) / (order.ExecutedValue+ order.FillFees)) * 100;
                     if (profitOfTx > 0){
                         newTx.gain = "true";
                         newTx.profit = "+" + Math.Round(profitOfTx, 2).ToString() + "%";
@@ -53,8 +53,8 @@ public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceW
                     }
                     newTx.time = time.ToString("dd MMM yy");
                     newTx.addr = "0";
-                    newTx.value = Math.Round(order.FilledSize * currentBtcPrice.Last, 2).ToString() + " " + currency;
-                    newTx.cost = (order.ExecutedValue+ order.FillFees).ToString("0.00") + " " + currency;
+                    newTx.value = String.Format("{0:N}", (Math.Round(order.FilledSize * currentBtcPrice.Last, 2))) + " " + currency;
+                    newTx.cost = String.Format("{0:N}", (order.ExecutedValue+ order.FillFees)) + " " + currency;
                     
                     newTx.btc =  order.FilledSize.ToString();
                     newTx.incoming = "true";
@@ -85,7 +85,3 @@ public class Transaction
     public string incoming { get; set; }
     public string gain { get; set; }
 }
-
-
-
-
